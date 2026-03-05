@@ -113,4 +113,4 @@ def process_payment(message, method, amount):
     bot.send_message(message.chat.id, f"✅ আপনার ৳{amount} এর অনুরোধ জমা হয়েছে! ১-২ ঘণ্টার মধ্যে পেমেন্ট পাবেন।")
 
 bot.polling()
-                
+    
