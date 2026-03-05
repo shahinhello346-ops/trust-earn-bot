@@ -12,93 +12,86 @@ user_data = {}
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
-    referrer_id = None
-    if len(message.text.split()) > 1:
-        referrer_id = message.text.split()[1]
-        
     if chat_id not in user_data:
-        user_data[chat_id] = {'balance': 0, 'name': message.from_user.first_name, 'referrals': 0}
-        if referrer_id and int(referrer_id) in user_data and int(referrer_id) != chat_id:
-            user_data[int(referrer_id)]['balance'] += 3
-            user_data[int(referrer_id)]['referrals'] += 1
-            user_data[chat_id]['balance'] += 1 
+        user_data[chat_id] = {'balance': 0, 'name': message.from_user.first_name, 'referrals': 0, 'ad_clicked': False}
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add("🎯 Tasks", "💰 Wallet", "👑 Leaderboard", "👫 Referral", "👤 Profile")
-    if chat_id == ADMIN_ID:
-        markup.add("📊 Admin Stats")
-        
-    bot.send_message(chat_id, f"Welcome {message.from_user.first_name}! 🚀\nStart earning Stars now!", reply_markup=markup)
+    bot.send_message(chat_id, f"Welcome {message.from_user.first_name}! 🚀\nStart earning now!", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: True)
 def handle_msg(message):
     chat_id = message.chat.id
     text = message.text
-    if chat_id not in user_data: user_data[chat_id] = {'balance': 0, 'name': message.from_user.first_name, 'referrals': 0}
+    if chat_id not in user_data: user_data[chat_id] = {'balance': 0, 'name': message.from_user.first_name, 'referrals': 0, 'ad_clicked': False}
 
     if text == "🎯 Tasks":
+        user_data[chat_id]['ad_clicked'] = False
         send_task(chat_id, 1)
         
-    elif text == "👫 Referral":
-        ref_link = f"https://t.me/StarsMakeBot?start={chat_id}"
-        msg_text = (f"🎁 **Referral Program**\n\n"
-                    f"Get +৳3 for every friend you invite!\n"
-                    f"Your friend gets +৳1 for joining.\n\n"
-                    f"🔗 **Your Referral Link:**\n`{ref_link}`\n\n"
-                    f"Total Invited: {user_data[chat_id]['referrals']}")
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("Share with Friends ↗️", url=f"https://t.me/share/url?url={ref_link}"))
-        bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="Markdown")
-
-    elif text == "👑 Leaderboard":
-        sorted_users = sorted(user_data.items(), key=lambda x: x[1]['balance'], reverse=True)[:30]
-        lb_text = "🏆 **Top 30 Leaderboard**\n\n"
-        for i, (uid, data) in enumerate(sorted_users, 1):
-            lb_text += f"{i}. {data['name']} - ৳{round(data['balance'], 2)}\n"
-        bot.send_message(chat_id, lb_text)
-
-    elif text == "📊 Admin Stats" and chat_id == ADMIN_ID:
-        bot.send_message(chat_id, f"📊 **Bot Statistics**\n\nTotal Users: {len(user_data)}\nStatus: Online ✅")
-
-    elif text == "💰 Wallet":
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("bKash", callback_data="pay_bkash"),
-                   types.InlineKeyboardButton("Nagad", callback_data="pay_nagad"))
-        bot.send_message(chat_id, "Choose your payment method:", reply_markup=markup)
-
     elif text == "👤 Profile":
         user = user_data[chat_id]
-        bot.send_message(chat_id, f"👤 **Profile**\n\nName: {user['name']}\nBalance: ৳{round(user['balance'], 2)}\nInvited: {user['referrals']}")
+        bot.send_message(chat_id, f"👤 **Profile Info**\n\n💰 Balance: ৳{round(user['balance'], 2)}\n👫 Invited: {user['referrals']}")
 
-def send_task(chat_id, task_no):
+    elif text == "💰 Wallet":
+        if user_data[chat_id]['balance'] < 100:
+            bot.send_message(chat_id, f"❌ Min withdraw ৳100.\nYour balance: ৳{round(user_data[chat_id]['balance'], 2)}")
+        else:
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("bKash", callback_data="pay_bkash"),
+                       types.InlineKeyboardButton("Nagad", callback_data="pay_nagad"))
+            bot.send_message(chat_id, "Choose Payment Method:", reply_markup=markup)
+
+def send_task(chat_id, task_no, message_id=None):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("View Ad 🔎", url=AD_LINK),
+    markup.add(types.InlineKeyboardButton("View Ad 🔎", url=AD_LINK, callback_data="clicked_ad"),
                types.InlineKeyboardButton("Confirm ✅", callback_data=f"task_{task_no}"))
-    markup.add(types.InlineKeyboardButton("Skip ⏩", callback_data=f"skip_{task_no}"))
-    bot.send_message(chat_id, f"💡 **Task {task_no}/8**\n\nClick 'View Ad', wait 10s, then press 'Confirm'.\n\nReward: +৳0.92", reply_markup=markup)
+    
+    msg_text = f"💡 **Task {task_no}/8**\nReward: +৳0.92\n\n(Click 'View Ad' first, then 'Confirm')"
+    
+    if message_id:
+        bot.edit_message_text(msg_text, chat_id, message_id, reply_markup=markup)
+    else:
+        bot.send_message(chat_id, msg_text, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_all(call):
     chat_id = call.message.chat.id
-    if call.data.startswith("task_"):
+    if call.data == "clicked_ad":
+        user_data[chat_id]['ad_clicked'] = True
+        bot.answer_callback_query(call.id, "Ad tracked! Now press Confirm.")
+    
+    elif call.data.startswith("task_"):
+        if not user_data[chat_id].get('ad_clicked'):
+            bot.answer_callback_query(call.id, "❌ Error: Click 'View Ad' first!", show_alert=True)
+            return
+        
         num = int(call.data.split("_")[1])
+        user_data[chat_id]['ad_clicked'] = False
         if num < 8:
-            bot.edit_message_text(f"✅ Task {num} completed!", chat_id, call.message.message_id)
-            send_task(chat_id, num + 1)
+            send_task(chat_id, num + 1, call.message.message_id)
         else:
             user_data[chat_id]['balance'] += 0.92
             bot.edit_message_text("🎊 Congratulations! You earned ৳0.92!", chat_id, call.message.message_id)
+
     elif call.data.startswith("pay_"):
         method = call.data.split("_")[1]
-        msg = bot.send_message(chat_id, f"Enter your {method} Number and Name:")
-        bot.register_next_step_handler(msg, process_payment, method)
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(types.InlineKeyboardButton("৳100", callback_data=f"amt_{method}_100"),
+                   types.InlineKeyboardButton("৳200", callback_data=f"amt_{method}_200"),
+                   types.InlineKeyboardButton("৳500", callback_data=f"amt_{method}_500"))
+        bot.edit_message_text(f"Select Amount ({method}):", chat_id, call.message.message_id, reply_markup=markup)
 
-def process_payment(message, method):
+    elif call.data.startswith("amt_"):
+        _, method, amount = call.data.split("_")
+        msg = bot.send_message(chat_id, f"Selected: ৳{amount} ({method}).\nEnter your Number:")
+        bot.register_next_step_handler(msg, process_payment, method, amount)
+
+def process_payment(message, method, amount):
     if message.text in ["🎯 Tasks", "💰 Wallet", "👑 Leaderboard", "👫 Referral", "👤 Profile"]:
-        bot.send_message(message.chat.id, "❌ Action Cancelled.")
+        bot.send_message(message.chat.id, "❌ Cancelled.")
         return
-    bot.send_message(ADMIN_ID, f"🔔 **Withdrawal!**\nMethod: {method}\nInfo: {message.text}")
-    bot.send_message(message.chat.id, "✅ Submitted! Wait 1-2 hours for payment.")
+    bot.send_message(ADMIN_ID, f"🔔 **New Request!**\nAmount: ৳{amount}\nMethod: {method}\nInfo: {message.text}")
+    bot.send_message(message.chat.id, "✅ Request submitted!")
 
 bot.polling()
-            
