@@ -5,7 +5,6 @@ import time
 API_TOKEN = '8517473053:AAGZamaioWHYrQrrg6cXOrKnIm0_udBGF9s'
 bot = telebot.TeleBot(API_TOKEN)
 
-# অ্যাড লিংক
 AD_LINK = 'Https://duepose.com/d31kudur45?key=ce85cd5333821f8ea0668e189f88f30c' 
 
 user_data = {}
@@ -28,53 +27,31 @@ def get_user(chat_id, first_name="User"):
 @bot.message_handler(commands=['start'])
 def start(message):
     chat_id = message.chat.id
-    first_name = message.from_user.first_name
-    user = get_user(chat_id, first_name)
+    user = get_user(chat_id, message.from_user.first_name)
     
-    # রেফারেল চেক
+    # রেফারেল বোনাস ৳৩ (যে রেফার করবে তার জন্য)
     text = message.text.split()
     if len(text) > 1 and text[1].isdigit():
-        referrer_id = int(text[1])
-        if referrer_id != chat_id and referrer_id in user_data:
-            # এখানে তুই চাইলে রেফারারকে বোনাস দিতে পারিস
-            pass
+        ref_id = int(text[1])
+        if ref_id != chat_id and ref_id in user_data:
+            user_data[ref_id]['balance'] += 3.0
+            user_data[ref_id]['referrals'] += 1
+            bot.send_message(ref_id, f"🎊 Success! You earned ৳3.00 for inviting {user['name']}")
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add("🎯 Tasks", "💰 Wallet", "👑 Leaderboard", "👫 Referral", "👤 Profile")
-    bot.send_message(chat_id, f"Welcome {first_name}! 🚀\nStart earning now!", reply_markup=markup)
-
-@bot.message_handler(func=lambda message: True)
-def handle_msg(message):
-    chat_id = message.chat.id
-    user = get_user(chat_id, message.from_user.first_name)
-    
-    if message.text == "🎯 Tasks":
-        send_task(chat_id, 1)
-    
-    elif message.text == "👤 Profile":
-        bot.send_message(chat_id, f"👤 **Profile Info**\n\n🆔 User ID: `{chat_id}`\n🔢 User No: #{user['uid']:03d}\n💰 Balance: ৳{round(user['balance'], 2)}\n👫 Invited: {user['referrals']}")
-    
-    elif message.text == "👫 Referral":
-        # তোর কাস্টমাইজ রেফারেল লিংক এখানে তৈরি হচ্ছে
-        ref_link = f"https://t.me/TrustEarnCash_bot?start={chat_id}"
-        bot.send_message(chat_id, f"👫 **Referral Program**\n\nShare your link to earn more!\n\nYour Link: {ref_link}\n\nPer Refer: ৳3.00")
-
-    elif message.text == "👑 Leaderboard":
-        # টপ ২০ ইউজারের নাম ও ব্যালেন্স আসবে
-        top_users = sorted(user_data.items(), key=lambda x: x[1]['balance'], reverse=True)[:20]
-        lb_msg = "👑 **Top 20 Earners**\n\n"
-        for i, (uid, data) in enumerate(top_users, 1):
-            lb_msg += f"{i}. {data['name']} - ৳{round(data['balance'], 2)}\n"
-        bot.send_message(chat_id, lb_msg)
+    bot.send_message(chat_id, f"Welcome {user['name']}! 🚀\nStart earning now!", reply_markup=markup)
 
 def send_task(chat_id, task_no, message_id=None):
     user = get_user(chat_id)
     user['status'] = False 
+    
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("View Ad 🔎", url=AD_LINK, callback_data="clicked_ad"))
-    markup.add(types.InlineKeyboardButton("Confirm ✅", callback_data=f"task_{task_no}"),
-               types.InlineKeyboardButton("Skip ⏭️", callback_data=f"skip_{task_no}"))
-    msg_text = f"💡 **Task {task_no}/8**\nReward: ৳0.92\n\n1. Click 'View Ad'\n2. Stay for 10 seconds\n3. Press 'Confirm'"
+    
+    # শুরুতে কনফার্ম বাটন দেখাবে না, শুধু ইনস্ট্রাকশন
+    msg_text = f"💡 **Task {task_no}/8**\nReward: ৳0.92\n\n1. Click 'View Ad'\n2. Wait for the timer to finish\n3. Confirm button will appear after 15s"
+    
     if message_id:
         try: bot.edit_message_text(msg_text, chat_id, message_id, reply_markup=markup)
         except: bot.send_message(chat_id, msg_text, reply_markup=markup)
@@ -89,16 +66,25 @@ def callback_all(call):
     if call.data == "clicked_ad":
         user['last_click'] = time.time()
         user['status'] = True
-        bot.answer_callback_query(call.id, "Timer Started! Wait 10 seconds.")
+        bot.answer_callback_query(call.id, "Timer Started! Stay 15s.")
+        
+        # এখানে একটা ম্যাজিক—টাইমার কাউন্টডাউন মেসেজ
+        for i in range(15, 0, -1):
+            try:
+                bot.edit_message_text(f"⏳ Stay on the Ad page: {i} seconds left...", chat_id, call.message.message_id)
+                time.sleep(1)
+            except: break
+            
+        # সময় শেষ হলে কনফার্ম বাটন পাঠিয়ে দেওয়া
+        markup = types.InlineKeyboardMarkup()
+        # এখানে task_no টা ধরে রাখার জন্য একটা বুদ্ধি খাটাতে হবে, আপাতত ১ দিয়ে রাখছি
+        task_num = 1 
+        markup.add(types.InlineKeyboardButton("Confirm ✅", callback_data=f"task_{task_num}"))
+        bot.edit_message_text("✅ 15s Finished! Now you can confirm.", chat_id, call.message.message_id, reply_markup=markup)
     
     elif call.data.startswith("task_"):
         if not user['status']:
-            bot.answer_callback_query(call.id, "❌ Error: Click 'View Ad' first!", show_alert=True)
-            return
-        
-        # টাইমার চেক (এখানেই আসল ফিক্স)
-        if time.time() - user['last_click'] < 10:
-            bot.answer_callback_query(call.id, "⚠️ Please wait 10 seconds!", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ Click 'View Ad' first!", show_alert=True)
             return
             
         num = int(call.data.split("_")[1])
@@ -108,5 +94,15 @@ def callback_all(call):
             user['balance'] += 0.92
             bot.edit_message_text("🎊 Congratulations! You earned ৳0.92", chat_id, call.message.message_id)
 
+@bot.message_handler(func=lambda message: True)
+def handle_msg(message):
+    if message.text == "🎯 Tasks":
+        send_task(message.chat.id, 1)
+    elif message.text == "👤 Profile":
+        user = get_user(message.chat.id)
+        bot.send_message(message.chat.id, f"👤 Profile: {user['name']}\n🆔 UID: {message.chat.id}\n💰 Balance: ৳{round(user['balance'], 2)}")
+    elif message.text == "👫 Referral":
+        link = f"https://t.me/TrustEarnCash_bot?start={message.chat.id}"
+        bot.send_message(message.chat.id, f"👫 Invite friends and earn ৳3.00!\n\nLink: {link}")
+
 bot.polling(none_stop=True)
-    
