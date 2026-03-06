@@ -106,3 +106,4 @@ def handle_msg(message):
         bot.send_message(message.chat.id, f"👫 Invite friends and earn ৳3.00!\n\nLink: {link}")
 
 bot.polling(none_stop=True)
+    
