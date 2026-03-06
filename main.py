@@ -9,53 +9,57 @@ bot = telebot.TeleBot(API_TOKEN)
 AD_LINK = 'Https://duepose.com/d31kudur45?key=ce85cd5333821f8ea0668e189f88f30c' 
 
 user_data = {}
-user_list = []
 
 def get_user(chat_id, name="User"):
     if chat_id not in user_data:
-        if chat_id not in user_list: user_list.append(chat_id)
-        user_data[chat_id] = {'balance': 0.0, 'referrals': 0, 'status': False, 'name': name, 'uid': len(user_list)}
+        user_data[chat_id] = {'balance': 0.0, 'referrals': 0, 'status': False, 'name': name}
     return user_data[chat_id]
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    user = get_user(message.chat.id, message.from_user.first_name)
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add("🎯 Tasks", "💰 Wallet", "👑 Leaderboard", "👫 Referral", "👤 Profile")
-    bot.send_message(message.chat.id, f"Welcome {user['name']}! 🚀\nStart earning now!", reply_markup=markup)
-
-def timer_thread(chat_id, message_id, task_no):
+# টাইমার ফাংশন যা বাটন আপডেট করবে
+def start_button_timer(chat_id, message_id, task_no):
     for i in range(15, 0, -1):
         try:
             time.sleep(1)
-            bot.edit_message_text(f"⏳ Stay on Ad page: {i}s left...", chat_id, message_id)
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton(f"⏳ Wait: {i}s...", url=AD_LINK))
+            bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
         except: return
     
-    # সময় শেষ হলে কনফার্ম বাটন আসবে
+    # ১৫ সেকেন্ড পর বাটন পাল্টে 'Confirm' হয়ে যাবে
     user_data[chat_id]['status'] = True
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("Confirm ✅", callback_data=f"done_{task_no}"))
-    bot.edit_message_text("✅ Time Finished! Press Confirm to earn.", chat_id, message_id, reply_markup=markup)
+    bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    get_user(message.chat.id, message.from_user.first_name)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add("🎯 Tasks", "💰 Wallet", "👑 Leaderboard", "👫 Referral", "👤 Profile")
+    bot.send_message(message.chat.id, f"Welcome {message.from_user.first_name}! 🚀\nStart earning now!", reply_markup=markup)
 
 def send_task(chat_id, task_no, message_id=None):
     user_data[chat_id]['status'] = False
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("View Ad 🔎", url=AD_LINK, callback_data=f"start_timer_{task_no}"))
-    text = f"💡 **Task {task_no}/8**\nReward: ৳0.92\n\n1. Click 'View Ad'\n2. Watch for 15 seconds"
+    # প্রথম বাটনটা ক্লিক করলেই টাইমার শুরু হবে
+    markup.add(types.InlineKeyboardButton("View Ad 🔎", url=AD_LINK, callback_data=f"timer_{task_no}"))
+    text = f"💡 **Task {task_no}/8**\nReward: ৳0.92\n\n১. View Ad বাটনে ক্লিক করো\n২. বাটনটা ১৫ সেকেন্ড কাউন্ট করবে\n৩. সময় শেষে Confirm বাটন আসবে"
     
-    if message_id: bot.edit_message_text(text, chat_id, message_id, reply_markup=markup)
-    else: bot.send_message(chat_id, text, reply_markup=markup)
+    if message_id:
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup)
+    else:
+        bot.send_message(chat_id, text, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
+def callback_handler(call):
     chat_id = call.message.chat.id
-    if call.data.startswith("start_timer_"):
+    if "timer_" in call.data:
         task_no = call.data.split("_")[-1]
-        bot.answer_callback_query(call.id, "Timer Started!")
-        # আলাদা থ্রেডে টাইমার চলবে যেন বট হ্যাং না হয়
-        threading.Thread(target=timer_thread, args=(chat_id, call.message.message_id, task_no)).start()
+        # আলাদা থ্রেডে টাইমার চালানো যেন বট ফ্রীজ না হয়
+        threading.Thread(target=start_button_timer, args=(chat_id, call.message.message_id, task_no)).start()
+        bot.answer_callback_query(call.id, "Timer started! Stay on the ad.")
         
-    elif call.data.startswith("done_"):
+    elif "done_" in call.data:
         if user_data[chat_id]['status']:
             num = int(call.data.split("_")[-1])
             if num < 8:
@@ -64,20 +68,15 @@ def callback_query(call):
                 user_data[chat_id]['balance'] += 0.92
                 bot.edit_message_text("🎊 Success! You earned ৳0.92", chat_id, call.message.message_id)
         else:
-            bot.answer_callback_query(call.id, "❌ Wait for the timer!", show_alert=True)
+            bot.answer_callback_query(call.id, "⚠️ Please wait for the timer!", show_alert=True)
 
 @bot.message_handler(func=lambda message: True)
 def handle_msg(message):
-    chat_id = message.chat.id
-    user = get_user(chat_id, message.from_user.first_name)
-    if message.text == "🎯 Tasks": send_task(chat_id, 1)
+    if message.text == "🎯 Tasks":
+        send_task(message.chat.id, 1)
     elif message.text == "👤 Profile":
-        bot.send_message(chat_id, f"👤 **Profile Info**\n🆔 UID: `{chat_id}`\n🔢 User No: #{user['uid']:03d}\n💰 Balance: ৳{round(user['balance'], 2)}")
-    elif message.text == "👑 Leaderboard":
-        top = sorted(user_data.items(), key=lambda x: x[1]['balance'], reverse=True)[:10]
-        msg = "👑 **Top Earners**\n\n"
-        for i, (u_id, data) in enumerate(top, 1): msg += f"{i}. {data['name']} - ৳{data['balance']}\n"
-        bot.send_message(chat_id, msg)
+        user = get_user(message.chat.id)
+        bot.send_message(message.chat.id, f"👤 Profile: {user['name']}\n💰 Balance: ৳{round(user['balance'], 2)}")
 
 bot.polling(none_stop=True)
-        
+    
